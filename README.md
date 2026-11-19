@@ -45,18 +45,58 @@
 ```bash
 git clone https://github.com/Giochvanno/resto-analytics.git
 cd resto-analytics
-python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -e ".[dev]"
 
-make run          # http://127.0.0.1:8000, документация API — /docs
+# 1. Виртуальное окружение
+python -m venv .venv
+source .venv/bin/activate            # Windows: .venv\Scripts\activate
+
+# 2. Зависимости точно по lock-файлу + сам пакет
+pip install -r requirements-dev.txt  # для сервера без тестов: requirements.txt
+pip install -e . --no-deps
+
+# 3. Настройки окружения
+cp .env.example .env                 # Windows: copy .env.example .env
+
+# 4. Запуск
+uvicorn resto_analytics.web.app:create_app --factory --reload   # или: make run
 ```
+
+Откройте http://127.0.0.1:8000, документация API лежит на `/docs`. На Linux/macOS шаги 1–2 делает `make venv`.
 
 Или в Docker:
 
 ```bash
 docker build -t resto-analytics .
-docker run --rm -p 8000:8000 resto-analytics
+docker run --rm -p 8000:8000 --env-file .env resto-analytics
 ```
+
+## Окружение и зависимости
+
+| Файл | Зачем | В git? |
+|---|---|---|
+| `pyproject.toml` | зависимости диапазонами (`fastapi>=0.115`) — что проекту нужно | да |
+| `requirements.txt` | точные версии для запуска (сервер, Docker) | да |
+| `requirements-dev.txt` | то же + pytest, ruff, mypy | да |
+| `.env.example` | список всех настроек с описанием | да |
+| `.env` | ваши значения | **нет** |
+| `.venv/` | виртуальное окружение | **нет** |
+
+Lock-файлы генерирует [uv](https://docs.astral.sh/uv/) из `pyproject.toml` с маркерами платформ, поэтому они
+подходят и для Linux, и для Windows. После изменения зависимостей в `pyproject.toml`:
+
+```bash
+pip install uv && make lock
+```
+
+CI проверяет, что lock-файлы не отстают от `pyproject.toml`.
+
+Настройки приложения (переменные окружения важнее `.env`):
+
+| Переменная | По умолчанию | Что делает |
+|---|---|---|
+| `RESTO_MAX_UPLOAD_MB` | `10` | максимальный размер загружаемого файла |
+| `RESTO_SUMMARY_CONFIG` | `config/summary.toml` | файл настроек сводки |
+| `RESTO_LOG_LEVEL` | `INFO` | уровень логов |
 
 ## Использование
 
@@ -128,6 +168,7 @@ iiko .xlsx ──► parsing ──► SalesReport ──► reports ──► S
 
 ```bash
 make check      # ruff + mypy --strict + pytest (то же, что в CI)
+make lock       # пересобрать requirements*.txt
 make format     # автоформатирование
 ```
 

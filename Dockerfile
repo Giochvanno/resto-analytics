@@ -10,8 +10,12 @@ FROM python:3.12-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 WORKDIR /app
+# Сначала зависимости по lock-файлу (этот слой кэшируется, пока requirements.txt не меняется),
+# потом сам пакет без зависимостей — версии берутся только из lock.
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 COPY --from=build /dist/*.whl /tmp/
-RUN pip install --no-cache-dir /tmp/*.whl && rm /tmp/*.whl \
+RUN pip install --no-cache-dir --no-deps /tmp/*.whl && rm /tmp/*.whl \
     && useradd --create-home --uid 1000 app
 COPY config ./config
 USER app

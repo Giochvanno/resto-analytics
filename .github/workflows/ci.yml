@@ -18,9 +18,12 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
+          cache-dependency-path: requirements-dev.txt
 
-      - name: Install
-        run: pip install -e ".[dev]"
+      - name: Install (точные версии из lock-файла)
+        run: |
+          pip install -r requirements-dev.txt
+          pip install -e . --no-deps
 
       - name: Lint
         run: |
@@ -32,6 +35,14 @@ jobs:
 
       - name: Tests
         run: pytest
+
+      - name: Lock files are up to date
+        if: matrix.python-version == '3.12'
+        run: |
+          pip install uv
+          make lock
+          git diff --exit-code requirements.txt requirements-dev.txt \
+            || (echo "requirements*.txt устарели: выполните make lock" && exit 1)
 
   docker:
     runs-on: ubuntu-latest
