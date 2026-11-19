@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Сводка продаж по группам</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600&family=Unbounded:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
+</head>
+<body>
+  <header class="top">
+    <div class="wrap">
+      <p class="eyebrow">Resto Analytics · выгрузки iiko</p>
+      <h1>Сводка продаж по&nbsp;группам</h1>
+      <p class="lede">Загрузите «Отчет о продажах» из iiko. Мы сложим позиции меню по группам и посчитаем продажи, себестоимость, валовый доход и коэффициент.</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="card upload" aria-labelledby="upload-title">
+      <h2 id="upload-title" class="visually-hidden">Загрузка файла</h2>
+      <label class="drop" id="drop" for="file">
+        <input type="file" id="file" name="file" accept=".xlsx,.xlsm" class="visually-hidden">
+        <span class="drop-title" id="drop-title">Выберите или перетащите файл .xlsx</span>
+        <span class="drop-sub" id="drop-sub">До {{ '%g' % max_upload_mb }} МБ. Файл не сохраняется на сервере.</span>
+      </label>
+
+      <div class="options">
+        <div class="field">
+          <label for="sales_source">Сумма продаж</label>
+          <select id="sales_source" name="sales_source">
+            <option value="revenue">Выручка (с обслуживанием)</option>
+            <option value="revenue_gross">Выручка без обслуживания</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="service_source">Обслуживание 10%</label>
+          <select id="service_source" name="service_source">
+            <option value="file">Из столбца «Сумма скидок»</option>
+            <option value="percent">10% от суммы продаж</option>
+            <option value="none">Не считать</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="last_column">Последний столбец</label>
+          <select id="last_column" name="last_column">
+            <option value="share">Доля в продажах, %</option>
+            <option value="efficiency">Продажи ÷ себестоимость × 100</option>
+          </select>
+        </div>
+      </div>
+      <p id="error" class="error" role="alert" hidden></p>
+    </section>
+
+    <section id="explain" class="card explain">
+      <h2>Как считается</h2>
+      <ol>
+        <li>Каждая строка выгрузки — одна позиция меню. По столбцу «Категория» она попадает в группу: Бар, Плов, Самса…</li>
+        <li>Внутри группы складываем выручку и себестоимость всех позиций.</li>
+        <li><b>Валовый доход</b> = продажи − себестоимость. <b>Коэффициент</b> = продажи ÷ себестоимость. <b>Доля</b> = продажи группы ÷ все продажи.</li>
+      </ol>
+      <p class="muted">Пример: позиции группы «Самса» вместе дали 38 500 тг продаж при себестоимости 24 100 тг → валовый доход 14 400 тг, коэффициент 1,60.</p>
+    </section>
+
+    <section id="result" class="result" hidden aria-live="polite">
+      <div class="result-head">
+        <div>
+          <h2 id="r-title"></h2>
+          <p id="r-meta" class="muted"></p>
+        </div>
+        <div class="actions">
+          <label class="check"><input type="checkbox" id="formulas"> С формулами</label>
+          <button type="button" id="download" class="btn">Скачать Excel</button>
+        </div>
+      </div>
+      <p id="recon" class="pill"></p>
+
+      <div class="kpis" id="kpis"></div>
+
+      <div class="table-wrap">
+        <table id="table">
+          <thead>
+            <tr>
+              <th scope="col">Группа</th>
+              <th scope="col" id="th-sales">Сумма продаж, тг</th>
+              <th scope="col">Себестоимость, тг</th>
+              <th scope="col">Валовый доход, тг</th>
+              <th scope="col">Обслуживание 10%, тг</th>
+              <th scope="col">Коэффициент</th>
+              <th scope="col" id="th-last">Доля в продажах, %</th>
+            </tr>
+          </thead>
+          <tbody id="tbody"></tbody>
+          <tfoot id="tfoot"></tfoot>
+        </table>
+      </div>
+      <p class="muted small">Нажмите на группу, чтобы увидеть, из каких позиций она собрана.</p>
+
+      <section id="issues" class="issues" hidden>
+        <h2>На что обратить внимание</h2>
+        <div id="issue-cards" class="issue-cards"></div>
+      </section>
+    </section>
+  </main>
+
+  <footer class="wrap foot muted small">
+    v{{ version }} · <a href="/docs">API</a>
+  </footer>
+  <script src="{{ url_for('static', path='app.js') }}" defer></script>
+</body>
+</html>
