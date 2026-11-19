@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+
+# Tools
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Env
+.env
+
+# Реальные выгрузки iiko с деньгами ресторана НЕ коммитим.
+# Тесты используют синтетические файлы, которые создаются в коде (tests/factories.py).
+data/
+*.xlsx
+*.xls
+!tests/fixtures/*.xlsx
+
+# IDE
+.idea/
+.vscode/
+.DS_Store
