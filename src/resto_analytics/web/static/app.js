@@ -6,7 +6,7 @@
   const fileInput = $("file");
   const drop = $("drop");
   const errorBox = $("error");
-  const selects = ["sales_source", "service_source", "last_column"].map($);
+  const selects = ["margin_base", "service_source", "last_column"].map($);
   let currentFile = null;
 
   const money = new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 0 });
@@ -88,13 +88,14 @@
 
     const t = data.total;
     $("kpis").replaceChildren(
-      kpi("Продажи", money.format(t.sales), "тг"),
+      kpi("Продажи без обслуживания", money.format(t.sales_net), "тг"),
+      kpi("Обслуживание 10%", money.format(t.service), "тг"),
       kpi("Себестоимость", money.format(t.cost), "тг"),
       kpi("Валовый доход", money.format(t.gross), "тг"),
       kpi("Средний коэффициент", t.coefficient == null ? "—" : coef.format(t.coefficient), ""),
     );
 
-    $("th-sales").textContent = data.sales_title;
+    $("base-note").textContent = `Доход, коэффициент и доля считаются от ${data.margin_base_label}.`;
     $("th-last").textContent = data.last_column_title;
     const isShare = data.settings.last_column === "share";
 
@@ -109,10 +110,11 @@
       const row = el("tr", { class: "group" }, nameCell, ...figureCells(g, isShare));
       const itemRows = g.items.map((it) => el("tr", { class: "item", "data-group": id, hidden: "" },
         el("td", {}, it.name),
-        el("td", {}, money.format(it.sales)),
+        el("td", {}, money.format(it.sales_net)),
+        el("td", {}, money.format(it.service)),
+        el("td", {}, money.format(it.sales_total)),
         el("td", {}, money.format(it.cost)),
         el("td", {}, money.format(it.gross)),
-        el("td", {}, ""),
         el("td", {}, it.coefficient == null ? el("span", { class: "nocost" }, "нет себест.") : coef.format(it.coefficient)),
         el("td", {}, `${money.format(it.quantity)} шт`),
       ));
@@ -137,10 +139,11 @@
           el("span", { style: `width:${Math.min(100, g.share)}%` })), last)
       : last;
     return [
-      el("td", {}, money.format(g.sales)),
+      el("td", {}, money.format(g.sales_net)),
+      el("td", {}, money.format(g.service)),
+      el("td", {}, money.format(g.sales_total)),
       el("td", {}, money.format(g.cost)),
       el("td", {}, money.format(g.gross)),
-      el("td", {}, money.format(g.service)),
       el("td", {}, g.coefficient == null ? el("span", { class: "nocost" }, "нет себестоимости") : coef.format(g.coefficient)),
       el("td", {}, lastCell),
     ];

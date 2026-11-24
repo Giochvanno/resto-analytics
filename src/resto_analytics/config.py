@@ -13,18 +13,24 @@ from pathlib import Path
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 
-class SalesSource(StrEnum):
-    REVENUE = "revenue"
-    """«Выручка» — с надбавкой за обслуживание (реально полученные деньги)."""
-    REVENUE_GROSS = "revenue_gross"
-    """«Выручка без вычета скидок» — по ценам меню, без обслуживания."""
+class MarginBase(StrEnum):
+    """От какой суммы считать валовый доход, коэффициент и долю."""
+
+    WITHOUT_SERVICE = "without_service"
+    """От продаж без обслуживания: наценка на саму еду (по умолчанию).
+
+    10% обслуживания — плата за работу зала, а не за блюдо, и на доставке её нет.
+    Если включить её в базу, блюда, которые часто берут через агрегаторы, выглядят хуже.
+    """
+    WITH_SERVICE = "with_service"
+    """От всей выручки вместе с обслуживанием — если эти деньги остаются заведению."""
 
 
 class ServiceSource(StrEnum):
     FILE = "file"
     """Брать надбавку из столбца «Сумма скидок» (там она со знаком минус)."""
     PERCENT = "percent"
-    """Считать как service_percent % от суммы продаж."""
+    """Считать как service_percent % от продаж без обслуживания."""
     NONE = "none"
 
 
@@ -61,7 +67,7 @@ class SummaryConfig(BaseModel):
     """«Группы» или «Категории», которые не попадают в сводку вообще."""
     row_order: tuple[str, ...] = ("Бар", "Плов", "Салаты", "Самса", "Лагман", "Шашлыки")
     """Порядок строк. Остальные группы идут следом по убыванию продаж."""
-    sales_source: SalesSource = SalesSource.REVENUE
+    margin_base: MarginBase = MarginBase.WITHOUT_SERVICE
     service_source: ServiceSource = ServiceSource.FILE
     service_percent: Decimal = Field(default=Decimal(10), ge=0, le=100)
     last_column: LastColumn = LastColumn.SHARE

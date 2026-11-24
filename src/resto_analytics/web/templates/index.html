@@ -29,17 +29,17 @@
 
       <div class="options">
         <div class="field">
-          <label for="sales_source">Сумма продаж</label>
-          <select id="sales_source" name="sales_source">
-            <option value="revenue">Выручка (с обслуживанием)</option>
-            <option value="revenue_gross">Выручка без обслуживания</option>
+          <label for="margin_base">Доход и коэффициент считать от</label>
+          <select id="margin_base" name="margin_base">
+            <option value="without_service">Продаж без обслуживания</option>
+            <option value="with_service">Продаж с обслуживанием</option>
           </select>
         </div>
         <div class="field">
           <label for="service_source">Обслуживание 10%</label>
           <select id="service_source" name="service_source">
             <option value="file">Из столбца «Сумма скидок»</option>
-            <option value="percent">10% от суммы продаж</option>
+            <option value="percent">10% от продаж без обслуживания</option>
             <option value="none">Не считать</option>
           </select>
         </div>
@@ -58,10 +58,10 @@
       <h2>Как считается</h2>
       <ol>
         <li>Каждая строка выгрузки — одна позиция меню. По столбцу «Категория» она попадает в группу: Бар, Плов, Самса…</li>
-        <li>Внутри группы складываем выручку и себестоимость всех позиций.</li>
-        <li><b>Валовый доход</b> = продажи − себестоимость. <b>Коэффициент</b> = продажи ÷ себестоимость. <b>Доля</b> = продажи группы ÷ все продажи.</li>
+        <li>Внутри группы складываем продажи без обслуживания, обслуживание 10% и себестоимость всех позиций.</li>
+        <li><b>Валовый доход</b> = продажи без обслуживания − себестоимость. <b>Коэффициент</b> = продажи без обслуживания ÷ себестоимость. Обслуживание не входит: это плата за работу зала, а не за блюдо, и на доставке его нет.</li>
       </ol>
-      <p class="muted">Пример: позиции группы «Самса» вместе дали 38 500 тг продаж при себестоимости 24 100 тг → валовый доход 14 400 тг, коэффициент 1,60.</p>
+      <p class="muted">Пример: позиции группы «Самса» дали 35 000 тг продаж без обслуживания (+3 500 тг обслуживания) при себестоимости 24 100 тг → валовый доход 10 900 тг, коэффициент 1,45.</p>
     </section>
 
     <section id="result" class="result" hidden aria-live="polite">
@@ -84,10 +84,11 @@
           <thead>
             <tr>
               <th scope="col">Группа</th>
-              <th scope="col" id="th-sales">Сумма продаж, тг</th>
+              <th scope="col">Без обслуживания, тг</th>
+              <th scope="col">Обслуживание 10%, тг</th>
+              <th scope="col">С обслуживанием, тг</th>
               <th scope="col">Себестоимость, тг</th>
               <th scope="col">Валовый доход, тг</th>
-              <th scope="col">Обслуживание 10%, тг</th>
               <th scope="col">Коэффициент</th>
               <th scope="col" id="th-last">Доля в продажах, %</th>
             </tr>
@@ -96,7 +97,7 @@
           <tfoot id="tfoot"></tfoot>
         </table>
       </div>
-      <p class="muted small">Нажмите на группу, чтобы увидеть, из каких позиций она собрана.</p>
+      <p class="muted small"><span id="base-note"></span> Нажмите на группу, чтобы увидеть, из каких позиций она собрана.</p>
 
       <section id="issues" class="issues" hidden>
         <h2>На что обратить внимание</h2>

@@ -16,7 +16,7 @@ def test_issues_found_in_sample(sample_report: SalesReport) -> None:
     assert kinds(sample_report) == {
         "Гуйру Лагман": IssueKind.ZERO_COST,
         "Домашние пельмени (суп)": IssueKind.SUSPICIOUS_COST,  # 3 тг при цене 1600
-        "Куырдак": IssueKind.LOW_MARGIN,  # 10 120 / 8200 = 1,23
+        "Куырдак": IssueKind.LOW_MARGIN,  # 9200 / 8200 = 1,12 (без обслуживания)
     }
 
 
@@ -34,7 +34,7 @@ def test_issue_details(sample_report: SalesReport) -> None:
     ]
     kuyrdak = issues[-1]
     assert kuyrdak.group == "Бар"
-    assert round(kuyrdak.coefficient or 0, 2) == Decimal("1.23")
+    assert round(kuyrdak.coefficient or 0, 2) == Decimal("1.12")
     assert kuyrdak.row_number == 8
     assert issues[0].coefficient is None
     assert IssueKind.ZERO_COST.severity == "critical"

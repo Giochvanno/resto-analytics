@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "resto-analytics"
-version = "0.1.0"
+version = "0.2.0"
 description = "Сводные отчёты для ресторана из выгрузок iiko: продажи, себестоимость, валовый доход по группам."
 readme = "README.md"
 requires-python = ">=3.11"

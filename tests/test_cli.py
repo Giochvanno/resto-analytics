@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 from openpyxl import load_workbook
 
+from resto_analytics import __version__
 from resto_analytics.cli import EXIT_BAD_INPUT, EXIT_OK, EXIT_USAGE, main
 
 
@@ -26,8 +27,12 @@ def test_prints_table(
     out = capsys.readouterr().out
     assert "Отчет о продажах с 01.11.26 по 30.11.26" in out
     assert "Бар" in out
-    assert "22 550" in out
+    assert "20 500" in out  # Бар без обслуживания
+    assert "22 550" in out  # Бар с обслуживанием
+    assert "80 010" in out
     assert "87 371" in out
+    assert "38 036" in out  # валовый доход от продаж без обслуживания
+    assert "от продаж без обслуживания" in out
     assert "Сверка с итогом файла: совпадает" in out
     assert "На что обратить внимание: 3" in out
 
@@ -35,19 +40,20 @@ def test_prints_table(
 def test_writes_excel(report_file: Path, no_config: list[str], tmp_path: Path) -> None:
     out = tmp_path / "сводка.xlsx"
     assert main(["summary", str(report_file), "-o", str(out), "--formulas", *no_config]) == EXIT_OK
-    assert load_workbook(out)["Сводка"]["E5"].value == "=C5-D5"
+    assert load_workbook(out)["Сводка"]["G5"].value == "=C5-F5"
 
 
 def test_json_output(
     report_file: Path, no_config: list[str], capsys: pytest.CaptureFixture[str]
 ) -> None:
     assert (
-        main(["summary", str(report_file), "--json", "--sales-source", "revenue_gross", *no_config])
+        main(["summary", str(report_file), "--json", "--margin-base", "with_service", *no_config])
         == 0
     )
     body = json.loads(capsys.readouterr().out)
-    assert body["settings"]["sales_source"] == "revenue_gross"
-    assert body["total"]["sales"] == 87371 - 7361
+    assert body["settings"]["margin_base"] == "with_service"
+    assert body["total"]["sales"] == 87371
+    assert body["total"]["gross"] == 45397
 
 
 def test_efficiency_column(
@@ -95,4 +101,4 @@ def test_version(capsys: pytest.CaptureFixture[str]) -> None:
     with pytest.raises(SystemExit) as exc:
         main(["--version"])
     assert exc.value.code == 0
-    assert "0.1.0" in capsys.readouterr().out
+    assert __version__ in capsys.readouterr().out

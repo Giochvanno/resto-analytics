@@ -24,7 +24,7 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.worksheet import Worksheet
 
-from resto_analytics.config import LastColumn, SalesSource
+from resto_analytics.config import LastColumn, MarginBase
 from resto_analytics.reports.data_checks import IssueKind
 from resto_analytics.reports.group_summary import GroupRow, SalesSummary
 
@@ -52,10 +52,16 @@ class ExcelOptions:
     formulas: bool = False
 
 
-def sales_title(summary: SalesSummary) -> str:
-    if summary.config.sales_source is SalesSource.REVENUE_GROSS:
-        return "Сумма продаж без обслуживания, тг"
-    return "Сумма продаж, тг"
+def margin_base_label(summary: SalesSummary) -> str:
+    """«…от продаж без обслуживания» — для подписей и примечаний."""
+    if summary.config.margin_base is MarginBase.WITH_SERVICE:
+        return "продаж с обслуживанием"
+    return "продаж без обслуживания"
+
+
+def _base_col(summary: SalesSummary, *, without: str, with_: str) -> str:
+    """Буква столбца, от которого считаются доход и коэффициент."""
+    return with_ if summary.config.margin_base is MarginBase.WITH_SERVICE else without
 
 
 def last_column_title(summary: SalesSummary) -> str:
@@ -108,6 +114,20 @@ def write_summary_xlsx(summary: SalesSummary, options: ExcelOptions | None = Non
     return buffer.getvalue()
 
 
+SUMMARY_HEADS = (
+    "Продажа по группам",
+    "Продажи без обслуживания, тг",
+    "Обслуживание 10%, тг",
+    "Продажи с обслуживанием, тг",
+    "Себестоимость, тг",
+    "Валовый доход, тг",
+    "Средний коэффициент (продажи / себестоимость)",
+)
+# B — группа, C — без обслуживания, D — обслуживание, E — с обслуживанием,
+# F — себестоимость, G — валовый доход, H — коэффициент, I — доля / эффективность
+_SUMMARY_COLS = "BCDEFGHI"
+
+
 def _write_summary_sheet(ws: Worksheet, summary: SalesSummary, options: ExcelOptions) -> None:
     meta = summary.meta
     ws["B2"] = meta.title
@@ -119,16 +139,7 @@ def _write_summary_sheet(ws: Worksheet, summary: SalesSummary, options: ExcelOpt
     ws["B3"] = " · ".join(info)
     ws["B3"].font = _MUTED
 
-    heads = [
-        "Продажа по группам",
-        sales_title(summary),
-        "Себестоимость, тг",
-        "Валовый доход, тг",
-        "Обслуживание 10%, тг",
-        "Средний коэффициент (сумма / себестоимость)",
-        last_column_title(summary),
-    ]
-    for col_idx, text in enumerate(heads, start=2):
+    for col_idx, text in enumerate((*SUMMARY_HEADS, last_column_title(summary)), start=2):
         cell = ws.cell(row=4, column=col_idx, value=text)
         cell.font = _BOLD
         cell.fill = _HEAD_FILL
@@ -139,51 +150,18 @@ def _write_summary_sheet(ws: Worksheet, summary: SalesSummary, options: ExcelOpt
     first = 5
     last = first + len(summary.groups) - 1
     total_row = last + 1
-    efficiency = summary.config.last_column is LastColumn.EFFICIENCY
-
     for offset, row in enumerate(summary.groups):
-        n = first + offset
         _write_group_row(
-            ws,
-            n=n,
-            row=row,
-            summary=summary,
-            options=options,
-            total_row=total_row,
-            efficiency=efficiency,
+            ws, n=first + offset, row=row, summary=summary, options=options, total_row=total_row
         )
-
-    t = summary.total
-    _set(ws, f"B{total_row}", "Итого")
-    if options.formulas and summary.groups:
-        for col in "CDEF":
-            _set(ws, f"{col}{total_row}", f"=SUM({col}{first}:{col}{last})", MONEY)
-        _set(ws, f"G{total_row}", f'=IF(D{total_row}=0,"{DASH}",C{total_row}/D{total_row})', COEF)
-        h = (
-            f'=IF(D{total_row}=0,"{DASH}",C{total_row}/D{total_row}*100)'
-            if efficiency
-            else f"=SUM(H{first}:H{last})"
-        )
-        _set(ws, f"H{total_row}", h, PCT)
-    else:
-        _set(ws, f"C{total_row}", _num(t.sales), MONEY)
-        _set(ws, f"D{total_row}", _num(t.cost), MONEY)
-        _set(ws, f"E{total_row}", _num(t.gross), MONEY)
-        _set(ws, f"F{total_row}", _num(t.service), MONEY)
-        _set(ws, f"G{total_row}", _ratio_or_dash(t.coefficient), COEF)
-        _set(ws, f"H{total_row}", _ratio_or_dash(summary.last_value(t)), PCT)
-    for col in "BCDEFGH":
-        cell = ws[f"{col}{total_row}"]
-        cell.font = _BOLD
-        cell.fill = _TOTAL_FILL
-        cell.border = _TOTAL_BORDER
+    _write_total_row(ws, summary, options, first=first, last=last, total_row=total_row)
 
     notes_row = total_row + 2
-    notes = _notes(summary)
-    for i, text in enumerate(notes):
+    for i, text in enumerate(_notes(summary)):
         ws.cell(row=notes_row + i, column=2, value=text).font = _MUTED
 
-    for col, width in zip("ABCDEFGH", (2, 24, 17, 17, 17, 17, 18, 18), strict=True):
+    widths = (2, 22, 16, 15, 16, 16, 16, 17, 17)
+    for col, width in zip("A" + _SUMMARY_COLS, widths, strict=True):
         ws.column_dimensions[col].width = width
     ws.freeze_panes = "C5"
     ws.page_setup.orientation = "landscape"
@@ -200,36 +178,82 @@ def _write_group_row(
     summary: SalesSummary,
     options: ExcelOptions,
     total_row: int,
-    efficiency: bool,
 ) -> None:
+    base = _base_col(summary, without="C", with_="E")
+    efficiency = summary.config.last_column is LastColumn.EFFICIENCY
     _set(ws, f"B{n}", row.name)
-    _set(ws, f"C{n}", _num(row.sales), MONEY)
-    _set(ws, f"D{n}", _num(row.cost), MONEY)
-    _set(ws, f"F{n}", _num(row.service), MONEY)
+    _set(ws, f"C{n}", _num(row.sales_net), MONEY)
+    _set(ws, f"D{n}", _num(row.service), MONEY)
+    _set(ws, f"F{n}", _num(row.cost), MONEY)
     if options.formulas:
-        _set(ws, f"E{n}", f"=C{n}-D{n}", MONEY)
-        _set(ws, f"G{n}", f'=IF(D{n}=0,"{DASH}",C{n}/D{n})', COEF)
-        h = f'=IF(D{n}=0,"{DASH}",C{n}/D{n}*100)' if efficiency else f"=C{n}/C${total_row}*100"
-        _set(ws, f"H{n}", h, PCT)
+        _set(ws, f"E{n}", f"=C{n}+D{n}", MONEY)
+        _set(ws, f"G{n}", f"={base}{n}-F{n}", MONEY)
+        _set(ws, f"H{n}", f'=IF(F{n}=0,"{DASH}",{base}{n}/F{n})', COEF)
+        last = (
+            f'=IF(F{n}=0,"{DASH}",{base}{n}/F{n}*100)'
+            if efficiency
+            else f"={base}{n}/{base}${total_row}*100"
+        )
+        _set(ws, f"I{n}", last, PCT)
     else:
-        _set(ws, f"E{n}", _num(row.gross), MONEY)
-        _set(ws, f"G{n}", _ratio_or_dash(row.coefficient), COEF)
-        _set(ws, f"H{n}", _ratio_or_dash(summary.last_value(row)), PCT)
-    for col in "GH":
+        _set(ws, f"E{n}", _num(row.sales_total), MONEY)
+        _set(ws, f"G{n}", _num(row.gross), MONEY)
+        _set(ws, f"H{n}", _ratio_or_dash(row.coefficient), COEF)
+        _set(ws, f"I{n}", _ratio_or_dash(summary.last_value(row)), PCT)
+    for col in "HI":
         ws[f"{col}{n}"].alignment = Alignment(horizontal="right")
+
+
+def _write_total_row(
+    ws: Worksheet,
+    summary: SalesSummary,
+    options: ExcelOptions,
+    *,
+    first: int,
+    last: int,
+    total_row: int,
+) -> None:
+    t = summary.total
+    n = total_row
+    base = _base_col(summary, without="C", with_="E")
+    _set(ws, f"B{n}", "Итого")
+    if options.formulas and summary.groups:
+        for col in "CDEFG":
+            _set(ws, f"{col}{n}", f"=SUM({col}{first}:{col}{last})", MONEY)
+        _set(ws, f"H{n}", f'=IF(F{n}=0,"{DASH}",{base}{n}/F{n})', COEF)
+        last_formula = (
+            f'=IF(F{n}=0,"{DASH}",{base}{n}/F{n}*100)'
+            if summary.config.last_column is LastColumn.EFFICIENCY
+            else f"=SUM(I{first}:I{last})"
+        )
+        _set(ws, f"I{n}", last_formula, PCT)
+    else:
+        for col, value in zip(
+            "CDEFG", (t.sales_net, t.service, t.sales_total, t.cost, t.gross), strict=True
+        ):
+            _set(ws, f"{col}{n}", _num(value), MONEY)
+        _set(ws, f"H{n}", _ratio_or_dash(t.coefficient), COEF)
+        _set(ws, f"I{n}", _ratio_or_dash(summary.last_value(t)), PCT)
+    for col in _SUMMARY_COLS:
+        cell = ws[f"{col}{n}"]
+        cell.font = _BOLD
+        cell.fill = _TOTAL_FILL
+        cell.border = _TOTAL_BORDER
 
 
 def _notes(summary: SalesSummary) -> list[str]:
     notes = [
-        "Валовый доход = сумма продаж − себестоимость. "
-        "Коэффициент = сумма продаж / себестоимость (сколько тенге продаж на 1 тг себестоимости).",
+        f"Валовый доход, коэффициент и доля считаются от {margin_base_label(summary)}.",
+        "Валовый доход = продажи − себестоимость. "
+        "Коэффициент = продажи / себестоимость (сколько тенге продаж на 1 тг себестоимости).",
         "Как строки собраны из позиций — на листе «Позиции».",
     ]
     rec = summary.reconciliation
     if rec is not None:
         if rec.ok:
             notes.append(
-                f"Сверка с итогом файла iiko: совпадает ({_money_text(rec.file_revenue)} тг)."
+                "Сверка с итогом файла iiko: совпадает "
+                f"({_money_text(rec.file_revenue)} тг с обслуживанием)."
             )
         else:
             notes.append(
@@ -255,12 +279,15 @@ def _write_items_sheet(ws: Worksheet, summary: SalesSummary, options: ExcelOptio
         "Группа в iiko",
         "Позиция",
         "Количество",
-        "Продажи, тг",
+        "Без обслуживания, тг",
+        "Обслуживание, тг",
+        "С обслуживанием, тг",
         "Себестоимость, тг",
         "Валовый доход, тг",
         "Коэффициент",
     ]
     _header_row(ws, heads)
+    base = _base_col(summary, without="E", with_="G")
     n = 2
     for group in summary.groups:
         for item in group.items:
@@ -268,18 +295,22 @@ def _write_items_sheet(ws: Worksheet, summary: SalesSummary, options: ExcelOptio
             ws.cell(row=n, column=2, value=item.source_group)
             ws.cell(row=n, column=3, value=item.name)
             ws.cell(row=n, column=4, value=float(item.quantity)).number_format = "0.##"
-            ws.cell(row=n, column=5, value=_num(item.sales)).number_format = MONEY
-            ws.cell(row=n, column=6, value=_num(item.cost)).number_format = MONEY
+            ws.cell(row=n, column=5, value=_num(item.sales_net))
+            ws.cell(row=n, column=6, value=_num(item.service))
+            ws.cell(row=n, column=8, value=_num(item.cost))
             if options.formulas:
-                ws.cell(row=n, column=7, value=f"=E{n}-F{n}")
-                ws.cell(row=n, column=8, value=f'=IF(F{n}=0,"{DASH}",E{n}/F{n})')
+                ws.cell(row=n, column=7, value=f"=E{n}+F{n}")
+                ws.cell(row=n, column=9, value=f"={base}{n}-H{n}")
+                ws.cell(row=n, column=10, value=f'=IF(H{n}=0,"{DASH}",{base}{n}/H{n})')
             else:
-                ws.cell(row=n, column=7, value=_num(item.gross))
-                ws.cell(row=n, column=8, value=_ratio_or_dash(item.coefficient))
-            ws.cell(row=n, column=7).number_format = MONEY
-            ws.cell(row=n, column=8).number_format = COEF
+                ws.cell(row=n, column=7, value=_num(item.sales_total))
+                ws.cell(row=n, column=9, value=_num(item.gross))
+                ws.cell(row=n, column=10, value=_ratio_or_dash(item.coefficient))
+            for col in range(5, 10):
+                ws.cell(row=n, column=col).number_format = MONEY
+            ws.cell(row=n, column=10).number_format = COEF
             n += 1
-    _finish_table(ws, heads, n - 1, widths=(16, 20, 44, 12, 14, 16, 16, 12))
+    _finish_table(ws, heads, n - 1, widths=(16, 20, 44, 11, 15, 14, 15, 15, 15, 12))
 
 
 def _write_issues_sheet(ws: Worksheet, summary: SalesSummary) -> None:

@@ -26,7 +26,7 @@ from starlette.concurrency import run_in_threadpool
 from resto_analytics import __version__
 from resto_analytics.config import (
     LastColumn,
-    SalesSource,
+    MarginBase,
     ServiceSource,
     SummaryConfig,
     load_config,
@@ -145,7 +145,7 @@ async def read_upload(request: Request, file: Annotated[UploadFile, File()]) -> 
 
 def request_config(
     request: Request,
-    sales_source: Annotated[SalesSource | None, Form()] = None,
+    margin_base: Annotated[MarginBase | None, Form()] = None,
     service_source: Annotated[ServiceSource | None, Form()] = None,
     last_column: Annotated[LastColumn | None, Form()] = None,
 ) -> SummaryConfig:
@@ -154,7 +154,7 @@ def request_config(
     update = {
         key: value
         for key, value in (
-            ("sales_source", sales_source),
+            ("margin_base", margin_base),
             ("service_source", service_source),
             ("last_column", last_column),
         )

@@ -8,8 +8,8 @@ from typing import Annotated
 
 from pydantic import BaseModel, PlainSerializer
 
-from resto_analytics.config import LastColumn, SalesSource, ServiceSource
-from resto_analytics.export.excel import last_column_title, sales_title
+from resto_analytics.config import LastColumn, MarginBase, ServiceSource
+from resto_analytics.export.excel import last_column_title, margin_base_label
 from resto_analytics.reports.data_checks import DataIssue, Reconciliation
 from resto_analytics.reports.group_summary import GroupRow, ItemRow, SalesSummary
 
@@ -25,7 +25,11 @@ class ItemOut(BaseModel):
     name: str
     source_group: str
     quantity: Money
+    sales_net: Money
+    service: Money
+    sales_total: Money
     sales: Money
+    """Сумма, от которой считаются доход и коэффициент (см. settings.margin_base)."""
     cost: Money
     gross: Money
     coefficient: Ratio
@@ -36,6 +40,9 @@ class ItemOut(BaseModel):
             name=item.name,
             source_group=item.source_group,
             quantity=item.quantity,
+            sales_net=item.sales_net,
+            service=item.service,
+            sales_total=item.sales_total,
             sales=item.sales,
             cost=item.cost,
             gross=item.gross,
@@ -45,10 +52,13 @@ class ItemOut(BaseModel):
 
 class GroupOut(BaseModel):
     name: str
+    sales_net: Money
+    service: Money
+    sales_total: Money
     sales: Money
+    """Сумма, от которой считаются доход, коэффициент и доля (см. settings.margin_base)."""
     cost: Money
     gross: Money
-    service: Money
     coefficient: Ratio
     share: Ratio
     last_value: Ratio
@@ -59,10 +69,12 @@ class GroupOut(BaseModel):
     def from_domain(cls, row: GroupRow, summary: SalesSummary) -> GroupOut:
         return cls(
             name=row.name,
+            sales_net=row.sales_net,
+            service=row.service,
+            sales_total=row.sales_total,
             sales=row.sales,
             cost=row.cost,
             gross=row.gross,
-            service=row.service,
             coefficient=row.coefficient,
             share=row.share,
             last_value=summary.last_value(row),
@@ -127,7 +139,7 @@ class MetaOut(BaseModel):
 
 
 class SettingsOut(BaseModel):
-    sales_source: SalesSource
+    margin_base: MarginBase
     service_source: ServiceSource
     last_column: LastColumn
 
@@ -135,7 +147,8 @@ class SettingsOut(BaseModel):
 class SummaryOut(BaseModel):
     meta: MetaOut
     settings: SettingsOut
-    sales_title: str
+    margin_base_label: str
+    """«продаж без обслуживания» — для подписи «доход считается от …»."""
     last_column_title: str
     groups: list[GroupOut]
     total: GroupOut
@@ -156,11 +169,11 @@ class SummaryOut(BaseModel):
                 sheet_name=s.meta.sheet_name,
             ),
             settings=SettingsOut(
-                sales_source=s.config.sales_source,
+                margin_base=s.config.margin_base,
                 service_source=s.config.service_source,
                 last_column=s.config.last_column,
             ),
-            sales_title=sales_title(s),
+            margin_base_label=margin_base_label(s),
             last_column_title=last_column_title(s),
             groups=[GroupOut.from_domain(g, s) for g in s.groups],
             total=GroupOut.from_domain(s.total, s),

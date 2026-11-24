@@ -19,8 +19,8 @@ def test_summarize_uses_given_config(sample_xlsx: bytes) -> None:
 def test_summarize_to_excel(sample_xlsx: bytes) -> None:
     result = summarize_to_excel(sample_xlsx, options=ExcelOptions(formulas=True))
     assert result.filename == "Сводка_продаж_01.11.26-30.11.26.xlsx"
-    assert result.summary.total.sales == 87371
-    assert load_workbook(io.BytesIO(result.content))["Сводка"]["E5"].value == "=C5-D5"
+    assert result.summary.total.sales_total == 87371
+    assert load_workbook(io.BytesIO(result.content))["Сводка"]["G5"].value == "=C5-F5"
 
 
 def test_errors_bubble_up_as_parse_error() -> None:

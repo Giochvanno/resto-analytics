@@ -130,14 +130,14 @@ select:focus-visible, button:focus-visible, .check input:focus-visible {
 .pill.ok { background: var(--ok-bg); color: var(--ok); }
 .pill.bad { background: var(--critical-bg); color: var(--critical); }
 
-.kpis { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+.kpis { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
 .kpi { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
 .kpi-label { font-size: 13px; color: var(--muted); }
 .kpi-value { font: 700 22px/1.2 var(--font-display); font-variant-numeric: tabular-nums; margin-top: 4px; }
 .kpi-value small { font: 400 14px var(--font-body); color: var(--muted); }
 
 .table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; min-width: 760px; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; min-width: 880px; }
 th, td { padding: 10px 12px; text-align: right; border-bottom: 1px solid var(--line); white-space: nowrap; }
 th { font-size: 13px; font-weight: 500; color: var(--muted); white-space: normal; vertical-align: bottom; }
 th:first-child, td:first-child { text-align: left; position: sticky; left: 0; background: var(--surface); }

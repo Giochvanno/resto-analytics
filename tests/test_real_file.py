@@ -32,7 +32,7 @@ def test_real_export_reconciles_with_its_own_total(real_bytes: bytes) -> None:
     assert summary.line_count > 0
     assert summary.reconciliation is not None, "в выгрузке нет строки «Итого»"
     assert summary.reconciliation.ok
-    assert summary.total.sales == summary.reconciliation.file_revenue
+    assert summary.total.sales_total == summary.reconciliation.file_revenue
 
 
 def test_real_export_builds_excel(real_bytes: bytes) -> None:

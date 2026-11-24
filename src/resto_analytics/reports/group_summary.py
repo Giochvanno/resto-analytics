@@ -3,18 +3,22 @@
 Это обычная сводная таблица: строки выгрузки раскладываются по группам
 (по умолчанию по «Категории» iiko), внутри группы суммы складываются,
 а из сумм считаются валовый доход, коэффициент и доля.
+
+У каждой строки три суммы продаж: без обслуживания, само обслуживание и с ним
+(sales_net + service = sales_total). Валовый доход, коэффициент и доля считаются
+от одной из них — какой, решает настройка margin_base.
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 
 from resto_analytics.config import (
     GroupBy,
     LastColumn,
-    SalesSource,
+    MarginBase,
     ServiceSource,
     SummaryConfig,
 )
@@ -33,8 +37,22 @@ class _Figures:
     """Общие производные показатели для строки сводки и позиции."""
 
     __slots__ = ()
-    sales: Decimal
+    sales_net: Decimal
+    service: Decimal
     cost: Decimal
+    margin_base: MarginBase
+
+    @property
+    def sales_total(self) -> Decimal:
+        """Продажи с обслуживанием = без обслуживания + обслуживание."""
+        return self.sales_net + self.service
+
+    @property
+    def sales(self) -> Decimal:
+        """Сумма, от которой считаются доход, коэффициент и доля (см. margin_base)."""
+        if self.margin_base is MarginBase.WITH_SERVICE:
+            return self.sales_total
+        return self.sales_net
 
     @property
     def gross(self) -> Decimal:
@@ -57,19 +75,21 @@ class ItemRow(_Figures):
     name: str
     source_group: str
     quantity: Decimal
-    sales: Decimal
-    cost: Decimal
+    sales_net: Decimal
     service: Decimal
+    cost: Decimal
+    margin_base: MarginBase
 
 
 @dataclass(frozen=True, slots=True)
 class GroupRow(_Figures):
     name: str
-    sales: Decimal
-    cost: Decimal
+    sales_net: Decimal
     service: Decimal
+    cost: Decimal
+    margin_base: MarginBase
     share: Decimal
-    """Доля в общих продажах, %."""
+    """Доля в общих продажах, % (от той же суммы, что и коэффициент)."""
     sources: tuple[str, ...] = ()
     """Из каких «Групп» iiko собрана строка — чтобы было видно, откуда цифры."""
     items: tuple[ItemRow, ...] = ()
@@ -103,25 +123,25 @@ def target_for(line: SaleLine, config: SummaryConfig) -> str | None:
     return line.category if config.group_by is GroupBy.CATEGORY else line.group
 
 
-def sales_of(line: SaleLine, config: SummaryConfig) -> Decimal:
-    if config.sales_source is SalesSource.REVENUE_GROSS:
-        return line.revenue_gross
-    return line.revenue
-
-
-def service_of(line: SaleLine, sales: Decimal, config: SummaryConfig) -> Decimal:
+def service_of(line: SaleLine, config: SummaryConfig) -> Decimal:
+    """Обслуживание по строке выгрузки."""
     if config.service_source is ServiceSource.NONE:
         return ZERO
     if config.service_source is ServiceSource.PERCENT:
-        return sales * config.service_percent / HUNDRED
+        return net_of(line) * config.service_percent / HUNDRED
     return line.service_surcharge
+
+
+def net_of(line: SaleLine) -> Decimal:
+    """Продажи без обслуживания: выручка минус надбавка (настоящие скидки уже вычтены iiko)."""
+    return line.revenue - line.service_surcharge
 
 
 @dataclass
 class _Acc:
-    sales: Decimal = ZERO
-    cost: Decimal = ZERO
+    sales_net: Decimal = ZERO
     service: Decimal = ZERO
+    cost: Decimal = ZERO
 
 
 def build_group_summary(report: SalesReport, config: SummaryConfig | None = None) -> SalesSummary:
@@ -137,23 +157,21 @@ def build_group_summary(report: SalesReport, config: SummaryConfig | None = None
         if target is None:
             excluded += 1
             continue
-        sales = sales_of(line, config)
-        service = service_of(line, sales, config)
-        a = acc[target]
-        a.sales += sales
-        a.cost += line.cost
-        a.service += service
-        sources[target][line.group] = None
-        items[target].append(
-            ItemRow(
-                name=line.item,
-                source_group=line.group,
-                quantity=line.quantity,
-                sales=sales,
-                cost=line.cost,
-                service=service,
-            )
+        item = ItemRow(
+            name=line.item,
+            source_group=line.group,
+            quantity=line.quantity,
+            sales_net=net_of(line),
+            service=service_of(line, config),
+            cost=line.cost,
+            margin_base=config.margin_base,
         )
+        a = acc[target]
+        a.sales_net += item.sales_net
+        a.service += item.service
+        a.cost += item.cost
+        sources[target][line.group] = None
+        items[target].append(item)
         checked.append(
             CheckedLine(
                 item=line.item,
@@ -161,39 +179,40 @@ def build_group_summary(report: SalesReport, config: SummaryConfig | None = None
                 source_category=line.category,
                 target=target,
                 quantity=line.quantity,
-                sales=sales,
+                sales=item.sales,
                 revenue_gross=line.revenue_gross,
                 cost=line.cost,
                 row_number=line.row_number,
             )
         )
 
-    total_sales = sum((a.sales for a in acc.values()), ZERO)
-    total_cost = sum((a.cost for a in acc.values()), ZERO)
-    total_service = sum((a.service for a in acc.values()), ZERO)
+    base = config.margin_base
+    total = GroupRow(
+        name="Итого",
+        sales_net=sum((a.sales_net for a in acc.values()), ZERO),
+        service=sum((a.service for a in acc.values()), ZERO),
+        cost=sum((a.cost for a in acc.values()), ZERO),
+        margin_base=base,
+        share=ZERO,
+    )
+    total = replace(total, share=HUNDRED if total.sales else ZERO)
 
-    rows = [
-        GroupRow(
+    rows = []
+    for name, a in acc.items():
+        row = GroupRow(
             name=name,
-            sales=a.sales,
-            cost=a.cost,
+            sales_net=a.sales_net,
             service=a.service,
-            share=percent(a.sales, total_sales) or ZERO,
+            cost=a.cost,
+            margin_base=base,
+            share=ZERO,
             sources=tuple(sources[name]),
             items=tuple(sorted(items[name], key=lambda i: (-i.sales, i.name))),
         )
-        for name, a in acc.items()
-    ]
+        rows.append(replace(row, share=percent(row.sales, total.sales) or ZERO))
     order = {name.casefold(): idx for idx, name in enumerate(config.row_order)}
     rows.sort(key=lambda r: (order.get(r.name.casefold(), len(order)), -r.sales, r.name))
 
-    total = GroupRow(
-        name="Итого",
-        sales=total_sales,
-        cost=total_cost,
-        service=total_service,
-        share=HUNDRED if total_sales else ZERO,
-    )
     return SalesSummary(
         meta=report.meta,
         config=config,

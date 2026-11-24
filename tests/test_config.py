@@ -7,7 +7,7 @@ from resto_analytics.config import (
     ConfigError,
     GroupBy,
     LastColumn,
-    SalesSource,
+    MarginBase,
     SummaryConfig,
     load_config,
 )
@@ -21,6 +21,7 @@ def test_defaults_match_fathers_example() -> None:
     assert cfg.group_overrides == {"Лагман": "Лагман"}
     assert cfg.row_order[:6] == ("Бар", "Плов", "Салаты", "Самса", "Лагман", "Шашлыки")
     assert cfg.last_column is LastColumn.SHARE
+    assert cfg.margin_base is MarginBase.WITHOUT_SERVICE
 
 
 def test_missing_file_gives_defaults(tmp_path: Path) -> None:
@@ -36,7 +37,7 @@ def test_load_custom_config(tmp_path: Path) -> None:
     path = tmp_path / "s.toml"
     path.write_text(
         'group_by = "group"\n'
-        'sales_source = "revenue_gross"\n'
+        'margin_base = "with_service"\n'
         'exclude_groups = ["Штрафы"]\n'
         "[group_overrides]\n"
         '"Десерты" = "Бар"\n'
@@ -46,7 +47,7 @@ def test_load_custom_config(tmp_path: Path) -> None:
     )
     cfg = load_config(path)
     assert cfg.group_by is GroupBy.GROUP
-    assert cfg.sales_source is SalesSource.REVENUE_GROSS
+    assert cfg.margin_base is MarginBase.WITH_SERVICE
     assert cfg.exclude_groups == ("Штрафы",)
     assert cfg.group_overrides == {"Десерты": "Бар"}
     assert cfg.checks.low_margin_coefficient == Decimal("1.5")
@@ -58,6 +59,7 @@ def test_load_custom_config(tmp_path: Path) -> None:
         "group_by = ",  # сломанный TOML
         'group_by = "dish"',  # неизвестное значение
         "unknown_key = 1",  # опечатка в имени настройки
+        'sales_source = "revenue"',  # настройка из версии 0.1 — теперь margin_base
         '[group_overrides]\n"Лагман" = " "',  # пустое имя строки
     ],
 )

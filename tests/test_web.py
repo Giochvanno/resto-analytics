@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from openpyxl import load_workbook
 
+from resto_analytics import __version__
 from resto_analytics.config import SummaryConfig
 from resto_analytics.settings import AppSettings
 from resto_analytics.web.app import XLSX_MEDIA_TYPE, content_disposition, create_app
@@ -25,7 +26,7 @@ def upload(data: bytes, name: str = "Отчет о продажах.xlsx") -> di
 
 
 def test_health(client: TestClient) -> None:
-    assert client.get("/health").json() == {"status": "ok", "version": "0.1.0"}
+    assert client.get("/health").json() == {"status": "ok", "version": __version__}
 
 
 def test_index_page(client: TestClient) -> None:
@@ -48,14 +49,19 @@ def test_summary_json(client: TestClient, sample_xlsx: bytes) -> None:
         "Супы",
         "Штрафы",
     ]
-    assert body["total"]["sales"] == 87371.0
-    assert body["total"]["coefficient"] == pytest.approx(87371 / 41974, abs=1e-4)
+    total = body["total"]
+    assert (total["sales_net"], total["service"], total["sales_total"]) == (80010, 7361, 87371)
+    assert total["sales"] == 80010.0  # база для дохода — без обслуживания
+    assert total["gross"] == 38036.0
+    assert total["coefficient"] == pytest.approx(80010 / 41974, abs=1e-4)
     assert body["reconciliation"]["ok"] is True
     assert body["meta"]["date_from"] == "2026-11-01"
-    assert body["sales_title"] == "Сумма продаж, тг"
+    assert body["margin_base_label"] == "продаж без обслуживания"
+    assert body["settings"]["margin_base"] == "without_service"
     bar = body["groups"][0]
     assert bar["sources"] == ["Горячие напитки", "Десерты", "Куырдак"]
     assert bar["items"][0]["name"] == "Куырдак"
+    assert bar["items"][0]["sales_total"] == 10120.0
     lagman = body["groups"][3]
     assert lagman["coefficient"] is None
     assert [i["kind"] for i in body["issues"]] == ["zero_cost", "suspicious_cost", "low_margin"]
@@ -66,25 +72,30 @@ def test_settings_from_form_override_config(client: TestClient, sample_xlsx: byt
     resp = client.post(
         SUMMARY_URL,
         files=upload(sample_xlsx),
-        data={
-            "sales_source": "revenue_gross",
-            "service_source": "none",
-            "last_column": "efficiency",
-        },
+        data={"margin_base": "with_service", "last_column": "efficiency"},
     )
     body = resp.json()
     assert body["settings"] == {
-        "sales_source": "revenue_gross",
-        "service_source": "none",
+        "margin_base": "with_service",
+        "service_source": "file",
         "last_column": "efficiency",
     }
-    assert body["total"]["sales"] == 87371.0 - 7361.0
-    assert body["total"]["service"] == 0
+    assert body["total"]["sales"] == 87371.0
+    assert body["total"]["gross"] == 45397.0
+    assert body["margin_base_label"] == "продаж с обслуживанием"
     assert body["last_column_title"].startswith("Эффективность")
 
 
+def test_service_can_be_switched_off(client: TestClient, sample_xlsx: bytes) -> None:
+    body = client.post(
+        SUMMARY_URL, files=upload(sample_xlsx), data={"service_source": "none"}
+    ).json()
+    assert body["total"]["service"] == 0
+    assert body["total"]["sales_total"] == body["total"]["sales_net"] == 80010.0
+
+
 def test_bad_setting_value_is_rejected(client: TestClient, sample_xlsx: bytes) -> None:
-    resp = client.post(SUMMARY_URL, files=upload(sample_xlsx), data={"sales_source": "profit"})
+    resp = client.post(SUMMARY_URL, files=upload(sample_xlsx), data={"margin_base": "profit"})
     assert resp.status_code == 422
 
 
@@ -97,7 +108,8 @@ def test_xlsx_download(client: TestClient, sample_xlsx: bytes) -> None:
         in resp.headers["content-disposition"]
     )
     ws = load_workbook(io.BytesIO(resp.content))["Сводка"]
-    assert ws["E5"].value == "=C5-D5"
+    assert ws["E5"].value == "=C5+D5"
+    assert ws["G5"].value == "=C5-F5"
 
 
 @pytest.mark.parametrize(

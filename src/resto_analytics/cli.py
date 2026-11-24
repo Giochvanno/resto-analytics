@@ -3,6 +3,7 @@
 resto-analytics summary выгрузка.xlsx                 # таблица в терминале
 resto-analytics summary выгрузка.xlsx -o сводка.xlsx  # + Excel
 resto-analytics summary выгрузка.xlsx --json          # JSON (как отдаёт API)
+    resto-analytics summary выгрузка.xlsx --margin-base with_service  # доход с обслуживанием
 resto-analytics serve --port 8000                     # веб-интерфейс
 """
 
@@ -18,12 +19,17 @@ from resto_analytics import __version__
 from resto_analytics.config import (
     ConfigError,
     LastColumn,
-    SalesSource,
+    MarginBase,
     ServiceSource,
     SummaryConfig,
     load_config,
 )
-from resto_analytics.export.excel import ExcelOptions, last_column_title, write_summary_xlsx
+from resto_analytics.export.excel import (
+    ExcelOptions,
+    last_column_title,
+    margin_base_label,
+    write_summary_xlsx,
+)
 from resto_analytics.parsing.errors import ParseError
 from resto_analytics.reports.group_summary import GroupRow, SalesSummary
 from resto_analytics.service import summarize
@@ -43,7 +49,11 @@ def _build_parser() -> argparse.ArgumentParser:
     s.add_argument("input", type=Path, help="выгрузка «Отчет о продажах» из iiko (.xlsx)")
     s.add_argument("-o", "--output", type=Path, help="куда сохранить сводку (.xlsx)")
     s.add_argument("--config", type=Path, default=DEFAULT_CONFIG_PATH, help="файл настроек TOML")
-    s.add_argument("--sales-source", choices=[v.value for v in SalesSource])
+    s.add_argument(
+        "--margin-base",
+        choices=[v.value for v in MarginBase],
+        help="от чего считать доход и коэффициент (по умолчанию without_service)",
+    )
     s.add_argument("--service", dest="service_source", choices=[v.value for v in ServiceSource])
     s.add_argument("--last-column", choices=[v.value for v in LastColumn])
     s.add_argument("--formulas", action="store_true", help="писать формулы в Excel")
@@ -59,7 +69,7 @@ def _config_from_args(args: argparse.Namespace) -> SummaryConfig:
     config = load_config(args.config)
     update = {
         key: value
-        for key in ("sales_source", "service_source", "last_column")
+        for key in ("margin_base", "service_source", "last_column")
         if (value := getattr(args, key)) is not None
     }
     return config.model_validate({**config.model_dump(), **update}) if update else config
@@ -74,17 +84,18 @@ def _fmt_ratio(value: Decimal | None, digits: int) -> str:
 
 
 def render_table(summary: SalesSummary) -> str:
-    heads = ["Группа", "Продажи", "Себестоимость", "Валовый доход", "Обслуж.", "Коэф.", "%"]
+    heads = ["Группа", "Без обсл.", "Обсл.", "С обсл.", "Себест.", "Вал. доход", "Коэф.", "%"]
     rows: list[list[str]] = []
 
     def add(row: GroupRow) -> None:
         rows.append(
             [
                 row.name,
-                _fmt_money(row.sales),
+                _fmt_money(row.sales_net),
+                _fmt_money(row.service),
+                _fmt_money(row.sales_total),
                 _fmt_money(row.cost),
                 _fmt_money(row.gross),
-                _fmt_money(row.service),
                 _fmt_ratio(row.coefficient, 2),
                 _fmt_ratio(summary.last_value(row), 1),
             ]
@@ -103,6 +114,7 @@ def render_table(summary: SalesSummary) -> str:
     out = [summary.meta.title, line(heads), "-" * (sum(widths) + 2 * (len(widths) - 1))]
     out += [line(r) for r in rows[:-1]]
     out += ["-" * len(out[-1]), line(rows[-1])]
+    out.append(f"Доход, коэффициент и % — от {margin_base_label(summary)}.")
     out.append(f"% — {last_column_title(summary).lower()}")
     rec = summary.reconciliation
     if rec is not None:
