@@ -54,18 +54,28 @@ def create_bot(token: str) -> Bot:
     return Bot(token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 
 
+SETUP_MODE = (
+    "RESTO_BOT_ALLOWED_USERS пуст: бот никого не пускает и только сообщает Telegram ID. "
+    "Напишите боту /start, впишите свой ID в .env и перезапустите бота."
+)
+
+
 def check_settings(settings: AppSettings) -> str:
-    """Возвращает токен или объясняет, чего не хватает."""
+    """Возвращает токен или объясняет, чего не хватает.
+
+    Пустой белый список — не ошибка: так бот можно запустить первый раз и узнать
+    свой ID. Данных он при этом никому не показывает.
+    """
     if settings.bot_token is None or not settings.bot_token.get_secret_value():
         raise BotConfigError(
             "Не задан RESTO_BOT_TOKEN. Получите токен у @BotFather и пропишите его в .env."
         )
-    if not settings.allowed_user_ids:
-        raise BotConfigError(
-            "Не задан RESTO_BOT_ALLOWED_USERS — бот никому не ответит. "
-            "Впишите через запятую Telegram ID тех, кому можно пользоваться ботом."
-        )
     return settings.bot_token.get_secret_value()
+
+
+def setup_warning(settings: AppSettings) -> str | None:
+    """Предупреждение для режима настройки, когда в белом списке никого нет."""
+    return None if settings.allowed_user_ids else SETUP_MODE
 
 
 async def run_polling(settings: AppSettings) -> None:  # pragma: no cover — сеть Telegram
@@ -77,6 +87,8 @@ async def run_polling(settings: AppSettings) -> None:  # pragma: no cover — с
         max_upload_bytes=settings.max_upload_bytes,
     )
     await bot.set_my_commands(COMMANDS)
+    if warning := setup_warning(settings):
+        logger.warning(warning)
     logger.info("bot started, allowed users: %d", len(settings.allowed_user_ids))
     try:
         await dp.start_polling(bot)

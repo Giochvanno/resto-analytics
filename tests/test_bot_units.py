@@ -6,7 +6,7 @@ from aiogram.enums import ParseMode
 from pydantic import SecretStr
 
 from resto_analytics.bot import format as fmt
-from resto_analytics.bot.app import BotConfigError, check_settings, create_bot
+from resto_analytics.bot.app import BotConfigError, check_settings, create_bot, setup_warning
 from resto_analytics.bot.store import InMemoryReportStore
 from resto_analytics.bot.views import (
     MAX_ISSUES_PER_KIND,
@@ -204,10 +204,18 @@ def test_check_settings() -> None:
         check_settings(AppSettings(bot_token=None, bot_allowed_users="1"))
     with pytest.raises(BotConfigError, match="RESTO_BOT_TOKEN"):
         check_settings(AppSettings(bot_token=SecretStr(""), bot_allowed_users="1"))
-    with pytest.raises(BotConfigError, match="RESTO_BOT_ALLOWED_USERS"):
-        check_settings(AppSettings(bot_token=SecretStr("42:TEST"), bot_allowed_users=""))
     ok = AppSettings(bot_token=SecretStr("42:TEST"), bot_allowed_users="1")
     assert check_settings(ok) == "42:TEST"
+    assert setup_warning(ok) is None
+
+
+def test_empty_allow_list_starts_in_setup_mode() -> None:
+    """Первый запуск: список пуст, бот стартует, чтобы показать владельцу его ID."""
+    settings = AppSettings(bot_token=SecretStr("42:TEST"), bot_allowed_users="")
+    assert check_settings(settings) == "42:TEST"
+    warning = setup_warning(settings)
+    assert warning is not None
+    assert "/start" in warning
 
 
 def test_create_bot_uses_html() -> None:

@@ -6,6 +6,7 @@ from openpyxl import load_workbook
 
 from resto_analytics import __version__
 from resto_analytics.cli import EXIT_BAD_INPUT, EXIT_OK, EXIT_USAGE, main
+from resto_analytics.settings import AppSettings
 
 
 @pytest.fixture
@@ -111,3 +112,20 @@ def test_bot_without_token_explains_what_to_do(
     monkeypatch.delenv("RESTO_BOT_TOKEN", raising=False)
     assert main(["bot"]) == EXIT_USAGE
     assert "RESTO_BOT_TOKEN" in capsys.readouterr().err
+
+
+def test_bot_with_empty_allow_list_starts_in_setup_mode(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("RESTO_BOT_TOKEN", "42:TEST")
+    monkeypatch.delenv("RESTO_BOT_ALLOWED_USERS", raising=False)
+    started: list[frozenset[int]] = []
+
+    async def fake_polling(settings: AppSettings) -> None:  # вместо сети Telegram
+        started.append(settings.allowed_user_ids)
+
+    monkeypatch.setattr("resto_analytics.bot.app.run_polling", fake_polling)
+    assert main(["bot"]) == EXIT_OK
+    assert started == [frozenset()]
+    assert "Внимание: RESTO_BOT_ALLOWED_USERS пуст" in capsys.readouterr().err

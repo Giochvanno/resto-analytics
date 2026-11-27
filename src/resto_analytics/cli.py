@@ -160,7 +160,12 @@ def _bot() -> int:
     import asyncio  # noqa: PLC0415
     import logging  # noqa: PLC0415
 
-    from resto_analytics.bot.app import BotConfigError, check_settings, run_polling  # noqa: PLC0415
+    from resto_analytics.bot.app import (  # noqa: PLC0415
+        BotConfigError,
+        check_settings,
+        run_polling,
+        setup_warning,
+    )
     from resto_analytics.settings import AppSettings  # noqa: PLC0415
 
     settings = AppSettings()
@@ -169,6 +174,8 @@ def _bot() -> int:
     except BotConfigError as exc:
         print(f"Ошибка: {exc}", file=sys.stderr)
         return EXIT_USAGE
+    if warning := setup_warning(settings):
+        print(f"Внимание: {warning}", file=sys.stderr)
     logging.basicConfig(  # pragma: no cover — дальше сеть Telegram
         level=settings.log_level.upper(),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
