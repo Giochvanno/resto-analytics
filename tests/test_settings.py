@@ -9,7 +9,13 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 @pytest.fixture
 def clean_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
-    for key in ("RESTO_MAX_UPLOAD_MB", "RESTO_SUMMARY_CONFIG", "RESTO_LOG_LEVEL"):
+    for key in (
+        "RESTO_MAX_UPLOAD_MB",
+        "RESTO_SUMMARY_CONFIG",
+        "RESTO_LOG_LEVEL",
+        "RESTO_BOT_TOKEN",
+        "RESTO_BOT_ALLOWED_USERS",
+    ):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.chdir(tmp_path)
     return tmp_path
@@ -50,3 +56,22 @@ def test_env_example_lists_every_setting() -> None:
     example = (PROJECT_ROOT / ".env.example").read_text(encoding="utf-8")
     for name in AppSettings.model_fields:
         assert f"RESTO_{name.upper()}=" in example, f"добавьте RESTO_{name.upper()} в .env.example"
+
+
+def test_bot_allowed_users_parsing(clean_env: Path) -> None:
+    settings = AppSettings(bot_allowed_users=" 111, 222;333 ,")
+    assert settings.allowed_user_ids == frozenset({111, 222, 333})
+    assert AppSettings().allowed_user_ids == frozenset()
+
+
+def test_bot_allowed_users_must_be_numbers(clean_env: Path) -> None:
+    with pytest.raises(ValueError, match="@papa"):
+        AppSettings(bot_allowed_users="111, @papa")
+
+
+def test_bot_token_is_hidden_in_repr(clean_env: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("RESTO_BOT_TOKEN", "42:SECRET")
+    settings = AppSettings()
+    assert "SECRET" not in repr(settings)
+    assert settings.bot_token is not None
+    assert settings.bot_token.get_secret_value() == "42:SECRET"
