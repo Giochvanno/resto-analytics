@@ -1,0 +1,26 @@
+# Запуск:
+#   docker compose up -d bot            # только Telegram-бот
+#   docker compose --profile web up -d  # бот + веб-страница на :8000
+#
+# Настройки берутся из .env (скопируйте .env.example и заполните RESTO_BOT_*).
+
+services:
+  bot:
+    build: .
+    command: ["resto-analytics", "bot"]
+    env_file: .env
+    restart: unless-stopped
+    volumes:
+      - ./config:/app/config:ro   # поменяли группы в summary.toml — перезапустите бота
+    healthcheck:
+      disable: true               # у бота нет HTTP, проверка /health из Dockerfile к нему не относится
+
+  web:
+    build: .
+    env_file: .env
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    volumes:
+      - ./config:/app/config:ro
+    profiles: ["web"]

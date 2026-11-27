@@ -62,6 +62,8 @@ def _build_parser() -> argparse.ArgumentParser:
     srv = sub.add_parser("serve", help="запустить веб-интерфейс")
     srv.add_argument("--host", default="127.0.0.1")
     srv.add_argument("--port", type=int, default=8000)
+
+    sub.add_parser("bot", help="запустить Telegram-бота (настройки RESTO_BOT_* в .env)")
     return parser
 
 
@@ -154,10 +156,33 @@ def _serve(args: argparse.Namespace) -> int:  # pragma: no cover — запус�
     return EXIT_OK
 
 
+def _bot() -> int:
+    import asyncio  # noqa: PLC0415
+    import logging  # noqa: PLC0415
+
+    from resto_analytics.bot.app import BotConfigError, check_settings, run_polling  # noqa: PLC0415
+    from resto_analytics.settings import AppSettings  # noqa: PLC0415
+
+    settings = AppSettings()
+    try:
+        check_settings(settings)
+    except BotConfigError as exc:
+        print(f"Ошибка: {exc}", file=sys.stderr)
+        return EXIT_USAGE
+    logging.basicConfig(  # pragma: no cover — дальше сеть Telegram
+        level=settings.log_level.upper(),
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+    asyncio.run(run_polling(settings))  # pragma: no cover
+    return EXIT_OK  # pragma: no cover
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     if args.command == "summary":
         return _summary(args)
+    if args.command == "bot":
+        return _bot()
     return _serve(args)  # pragma: no cover
 
 

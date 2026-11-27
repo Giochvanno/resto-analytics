@@ -102,3 +102,12 @@ def test_version(capsys: pytest.CaptureFixture[str]) -> None:
         main(["--version"])
     assert exc.value.code == 0
     assert __version__ in capsys.readouterr().out
+
+
+def test_bot_without_token_explains_what_to_do(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.chdir(tmp_path)  # чтобы не подхватить настоящий .env
+    monkeypatch.delenv("RESTO_BOT_TOKEN", raising=False)
+    assert main(["bot"]) == EXIT_USAGE
+    assert "RESTO_BOT_TOKEN" in capsys.readouterr().err

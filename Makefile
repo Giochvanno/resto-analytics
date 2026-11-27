@@ -1,4 +1,4 @@
-.PHONY: venv install lock lint format typecheck test check run docker-build docker-run
+.PHONY: venv install lock lint format typecheck test check run bot docker-build docker-run
 
 PYTHON ?= python3
 
@@ -39,6 +39,9 @@ check: lint typecheck test
 
 run:
 	uvicorn resto_analytics.web.app:create_app --factory --reload
+
+bot:
+	resto-analytics bot
 
 docker-build:
 	docker build -t resto-analytics .
